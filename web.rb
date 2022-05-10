@@ -49,36 +49,6 @@ def validateApiKey
   return nil
 end
 
-# This endpoint registers a Verifone P400 reader to your Stripe account.
-# https://stripe.com/docs/terminal/readers/connecting/verifone-p400#register-reader
-post '/register_reader' do
-  validationError = validateApiKey
-  if !validationError.nil?
-    status 400
-    return log_info(validationError)
-  end
-
-  begin
-    reader = Stripe::Terminal::Reader.create(
-      :registration_code => params[:registration_code],
-      :label => params[:label],
-      :location => params[:location]
-    )
-  rescue Stripe::StripeError => e
-    status 402
-    return log_info("Error registering reader! #{e.message}")
-  end
-
-  log_info("Reader registered: #{reader.id}")
-
-  status 200
-  # Note that returning the Stripe reader object directly creates a dependency between your
-  # backend's Stripe.api_version and your clients, making future upgrades more complicated.
-  # All clients must also be ready for backwards-compatible changes at any time:
-  # https://stripe.com/docs/upgrades#what-changes-does-stripe-consider-to-be-backwards-compatible
-  return reader.to_json
-end
-
 # This endpoint creates a ConnectionToken, which gives the SDK permission
 # to use a reader with your Stripe account.
 # https://stripe.com/docs/terminal/sdk/js#connection-token
@@ -103,34 +73,6 @@ post '/connection_token' do
   return {:secret => token.secret}.to_json
 end
 
-# This endpoint creates a PaymentIntent.
-# https://stripe.com/docs/terminal/payments#create
-post '/create_payment_intent' do
-  validationError = validateApiKey
-  if !validationError.nil?
-    status 400
-    return log_info(validationError)
-  end
-
-  begin
-    payment_intent = Stripe::PaymentIntent.create(
-      :payment_method_types => params[:payment_method_types] || ['card_present'],
-      :capture_method => 'manual',
-      :amount => params[:amount],
-      :currency => params[:currency] || 'usd',
-      :description => params[:description] || 'Example PaymentIntent',
-      :payment_method_options => params[:payment_method_options] || [],
-    )
-  rescue Stripe::StripeError => e
-    status 402
-    return log_info("Error creating PaymentIntent! #{e.message}")
-  end
-
-  log_info("PaymentIntent successfully created: #{payment_intent.id}")
-  status 200
-  return {:intent => payment_intent.id, :secret => payment_intent.client_secret}.to_json
-end
-
 # This endpoint captures a PaymentIntent.
 # https://stripe.com/docs/terminal/payments#capture
 post '/capture_payment_intent' do
@@ -148,87 +90,6 @@ post '/capture_payment_intent' do
   return {:intent => payment_intent.id, :secret => payment_intent.client_secret}.to_json
 end
 
-# This endpoint creates a SetupIntent.
-# https://stripe.com/docs/api/setup_intents/create
-post '/create_setup_intent' do
-  validationError = validateApiKey
-  if !validationError.nil?
-    status 400
-    return log_info(validationError)
-  end
-
-  begin
-    setup_intent_params = {
-      :payment_method_types => params[:payment_method_types] || ['card_present'],
-    }
-
-    if !params[:customer].nil?
-      setup_intent_params[:customer] = params[:customer]
-    end
-
-    if !params[:description].nil?
-      setup_intent_params[:description] = params[:description]
-    end
-
-    if !params[:on_behalf_of].nil?
-      setup_intent_params[:on_behalf_of] = params[:on_behalf_of]
-    end
-
-    setup_intent = Stripe::SetupIntent.create(setup_intent_params)
-    
-  rescue Stripe::StripeError => e
-    status 402
-    return log_info("Error creating SetupIntent! #{e.message}")
-  end
-
-  log_info("SetupIntent successfully created: #{setup_intent.id}")
-  status 200
-  return {:intent => setup_intent.id, :secret => setup_intent.client_secret}.to_json
-end
-
-# Looks up or creates a Customer on your stripe account
-# with email "example@test.com".
-def lookupOrCreateExampleCustomer
-  customerEmail = "example@test.com"
-  begin
-    customerList = Stripe::Customer.list(email: customerEmail, limit: 1).data
-    if (customerList.length == 1)
-      return customerList[0]
-    else
-      return Stripe::Customer.create(email: customerEmail)
-    end
-  rescue Stripe::StripeError => e
-    status 402
-    return log_info("Error creating or retreiving customer! #{e.message}")
-  end
-end
-
-# This endpoint attaches a PaymentMethod to a Customer.
-# https://stripe.com/docs/terminal/payments/saving-cards#read-reusable-card
-post '/attach_payment_method_to_customer' do
-  begin
-    customer = lookupOrCreateExampleCustomer
-
-    payment_method = Stripe::PaymentMethod.attach(
-      params[:payment_method_id],
-      {
-        customer: customer.id,
-        expand: ["customer"],
-    })
-  rescue Stripe::StripeError => e
-    status 402
-    return log_info("Error attaching PaymentMethod to Customer! #{e.message}")
-  end
-
-  log_info("Attached PaymentMethod to Customer: #{customer.id}")
-
-  status 200
-  # Note that returning the Stripe payment_method object directly creates a dependency between your
-  # backend's Stripe.api_version and your clients, making future upgrades more complicated.
-  # All clients must also be ready for backwards-compatible changes at any time:
-  # https://stripe.com/docs/upgrades#what-changes-does-stripe-consider-to-be-backwards-compatible
-  return payment_method.to_json
-end
 
 # This endpoint lists the first 100 Locations. If you will have more than 100
 # Locations, you'll likely want to implement pagination in your application so that
